@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#07090d" />
+    <title>Spellbound // Arena</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="world"></canvas>
+      <div class="screen-vignette"></div>
+
+      <section id="landing" class="screen">
+        <div class="landing-noise"></div>
+        <div class="brand"><span class="brand-mark">S</span><span>SPELLBOUND</span></div>
+        <div class="landing-copy">
+          <p class="eyebrow">DEPLOYMENT ORDER // ORIGIN CLASSIFIED</p>
+          <h1>End the incursion.<br><em>Do not question the target.</em></h1>
+          <p class="lede">You were engineered to cross the rift after every human deployment failed. Nobody told you whose territory was invaded.</p>
+          <div class="landing-actions"><button id="enter" class="primary">ENTER THE RIFT <span>↗</span></button><button id="simulation" class="secondary" type="button">SIMULATION</button><button id="accessibility-open" class="secondary" type="button">ACCESSIBILITY</button></div>
+          <div class="landing-join" aria-label="Join a multiplayer rift">
+            <label for="landing-room-code">ROOM CODE</label>
+            <div><input id="landing-room-code" maxlength="8" autocomplete="off" spellcheck="false" placeholder="ENTER CODE" /><button id="join-rift" type="button">JOIN A RIFT <span>→</span></button></div>
+            <small id="landing-room-note">Join an existing deployment directly</small>
+          </div>
+        </div>
+        <div class="season">SEASON 01 <span></span> THE AWAKENING</div>
+      </section>
+
+      <div id="accessibility-panel" class="modal accessibility-panel hidden" role="dialog" aria-modal="true" aria-labelledby="accessibility-title"><div>
+        <p class="eyebrow">DISPLAY & COMFORT</p><h2 id="accessibility-title">Accessibility</h2>
+        <p class="accessibility-note">Faction symbols and silhouettes remain active in every mode, so color is never the only combat cue. These preferences stay only on this device—there are no accounts.</p>
+        <label>COLOR PALETTE<select id="accessibility-palette"><option value="default">DEFAULT</option><option value="rg-safe">RED–GREEN COLORBLIND SAFE</option><option value="tritan-safe">BLUE–YELLOW COLORBLIND SAFE</option><option value="mono">HIGH-SEPARATION MONO</option></select></label>
+        <label class="accessibility-toggle"><input id="accessibility-motion" type="checkbox" /> REDUCE CAMERA SHAKE AND FLASHING</label>
+        <label class="accessibility-toggle"><input id="accessibility-contrast" type="checkbox" /> HIGH-CONTRAST HUD AND TEXT</label>
+        <label class="accessibility-toggle"><input id="accessibility-hud" type="checkbox" /> LARGER HUD</label>
+        <button id="accessibility-close" class="primary" type="button">DONE</button>
+      </div></div>
+
+      <div id="rift-mode" class="modal rift-mode hidden" role="dialog" aria-modal="true" aria-labelledby="rift-mode-title"><div>
+        <p class="eyebrow">OPEN A NEW RIFT</p><h2 id="rift-mode-title">Choose deployment type.</h2>
+        <div class="rift-type-options"><button id="choose-campaign" type="button"><strong>CAMPAIGN</strong><span>Cooperative story progression</span></button><button id="choose-pvp" type="button"><strong>PVP MATCH</strong><span>Players fight until one remains</span></button><button id="choose-endless" type="button"><strong>ENDLESS</strong><span>Cooperative waves that escalate until the whole squad falls</span></button></div>
+        <div id="pvp-map-options" class="pvp-map-options hidden"><p>SELECT BATTLEGROUND</p><div class="pvp-format" role="group" aria-label="PvP match format"><button id="pvp-format-ffa" class="active" type="button" aria-pressed="true"><strong>FREE FOR ALL</strong><span>Every battlemage for themselves</span></button><button id="pvp-format-teams" type="button" aria-pressed="false"><strong>TEAM VS TEAM</strong><span>Two balanced sides · R to ready</span></button></div><div class="map-carousel"><button id="pvp-map-prev" class="map-arrow" type="button" aria-label="Previous battleground">‹</button><article id="pvp-map-preview" class="map-preview" data-arena="frost"><div class="map-preview-art"><i></i><i></i><i></i></div><strong id="pvp-map-name">FROSTBOUND</strong><span id="pvp-map-description">Open ice and broken cover</span></article><button id="pvp-map-next" class="map-arrow" type="button" aria-label="Next battleground">›</button></div><button id="launch-pvp" class="primary map-launch" type="button">OPEN PVP RIFT <span>→</span></button></div>
+        <div id="endless-map-options" class="pvp-map-options endless-random hidden"><p>ENDLESS WORLD ROTATION</p><div class="endless-random-card"><div class="random-realms"><i></i><i></i><i></i><i></i></div><strong>EVERY WAVE. A NEW WORLD.</strong><span>Endless randomly chooses a realm type and generates a fresh layout for every wave.</span></div><button id="launch-endless" class="primary map-launch" type="button">OPEN RANDOM ENDLESS RIFT <span>↻</span></button></div>
+        <button id="cancel-rift-mode" class="secondary" type="button">CANCEL</button>
+      </div></div>
+
+      <div id="simulation-setup" class="modal simulation-setup hidden" role="dialog" aria-modal="true" aria-labelledby="simulation-title"><div>
+        <p class="eyebrow">COMBAT LAB // RULE-BASED AI</p><h2 id="simulation-title">Build a simulation.</h2>
+        <div class="simulation-grid">
+          <label>HELPER BOTS<input id="simulation-helpers" type="number" min="1" max="20" value="5" /><small>Blue-team normal AI</small></label>
+          <label>OPPONENTS<input id="simulation-opponents" type="number" min="0" max="20" value="6" /><small>Red-team combatants</small></label>
+          <label>WARDENS<input id="simulation-wardens" type="number" min="0" max="3" value="0" /><small>Purple boss combatants</small></label>
+          <label>DRONES<input id="simulation-drones" type="number" min="0" max="12" value="0" /><small>Hostile missile drones</small></label>
+          <label>OPPONENT AI<select id="simulation-difficulty"><option value="easy">EASY</option><option value="normal" selected>NORMAL</option><option value="hard">HARD</option><option value="nightmare">NIGHTMARE</option></select></label>
+          <label>ARENA<select id="simulation-map"><option value="frost">FROSTBOUND</option><option value="verdant">VERDANT RUINS</option><option value="rift">OBSIDIAN RIFT</option><option value="warden" selected>GRAND WARDEN ARENA</option></select></label>
+        </div>
+        <p class="simulation-note">Join the blue helper bots as a green player, or remain untargetable and watch the battle from inside the arena.</p>
+        <div class="simulation-actions"><button id="simulation-join" class="primary" type="button">JOIN THE HELPERS <span>→</span></button><button id="simulation-spectate" class="primary spectate" type="button">SPECTATE <span>◎</span></button><button id="simulation-cancel" class="secondary" type="button">CANCEL</button></div>
+      </div></div>
+
+      <section id="lobby" class="screen hidden">
+        <header><div class="brand small"><span class="brand-mark">S</span><span>SPELLBOUND</span></div><span class="online"><i></i> RELAY ONLINE</span></header>
+        <div class="lobby-layout">
+          <div class="lobby-copy"><p class="eyebrow">CAMPAIGN DEPLOYMENT</p><h2>The breach begins<br>in Frostbound.</h2><p>Enter your callsign. Command identifies every figure beyond the rift as hostile. Your orders are to reach the Warden and end organized resistance.</p></div>
+          <div class="maps" id="maps">
+            <button class="map-card active" data-map="frost"><div class="map-art frost"><span></span></div><small>01 · START</small><h3>FROSTBOUND</h3><p>3 easy enemies · then Verdant</p></button>
+            <button class="map-card" data-map="verdant"><div class="map-art verdant"><span></span></div><small>02</small><h3>VERDANT RUINS</h3><p>8 normal enemies · then Obsidian</p></button>
+            <button class="map-card" data-map="rift"><div class="map-art rift"><span></span></div><small>03+</small><h3>OBSIDIAN ASCENT</h3><p>15 hard enemies · then the Warden Tower</p></button>
+          </div>
+          <div class="deploy">
+            <label>CALLSIGN<input id="name" maxlength="18" value="Wanderer" /></label>
+            <div class="room-config">
+              <label>ROOM CODE<input id="room-code" maxlength="8" autocomplete="off" placeholder="SOLO" aria-label="Multiplayer room code" /></label>
+              <button id="create-room" class="room-button" type="button">CREATE ROOM</button>
+              <button id="copy-invite" class="room-button hidden" type="button">COPY INVITE</button>
+              <small id="room-note">Leave blank for solo play</small>
+            </div>
+            <div class="helper-config">
+              <label>HELPER BOTS <small>Normal AI · permanent loss · max 5</small></label>
+              <div class="bot-stepper"><button id="helper-minus" aria-label="Remove helper bot">−</button><input id="helper-count" type="number" min="0" max="5" value="0" aria-label="Number of helper bots" /><button id="helper-plus" aria-label="Add helper bot">+</button><small>ALLIES</small></div>
+            </div>
+            <div class="bot-config campaign-hidden-options">
+              <label class="bot-toggle"><input id="bots-enabled" type="checkbox" checked /><span></span> AUTOMATIC ENEMIES</label>
+              <label class="bot-toggle"><input id="respawns-enabled" type="checkbox" autocomplete="off" /><span></span> AUTO RESPAWN</label>
+              <label class="difficulty-config">AI LEVEL<select id="bot-difficulty"><option value="easy">EASY</option><option value="normal">NORMAL</option><option value="hard">HARD</option><option value="nightmare">NIGHTMARE</option></select></label>
+              <div class="bot-stepper"><button id="bot-minus" aria-label="Remove bot">−</button><input id="bot-count" type="number" min="0" max="20" value="3" aria-label="Number of bots" /><button id="bot-plus" aria-label="Add bot">+</button><small>BOTS</small></div>
+            </div>
+            <button id="deploy" class="primary">BEGIN CAMPAIGN <span>→</span></button>
+          </div>
+        </div>
+      </section>
+
+      <div id="hud" class="hidden">
+        <div class="topbar"><div class="map-label hud-objective-hidden" aria-hidden="true"><small>CAMPAIGN OBJECTIVE</small><strong id="realm-name">FROSTBOUND · DESCEND INTO THE ICE CAVERNS</strong></div><div id="status" class="online connection-details"><i></i><span><b>CONNECTING</b><small>RELAY NEGOTIATION</small></span></div></div>
+        <div id="ally-status" class="team-status player-health-status hidden" aria-label="Player health">
+          <div class="team-meter health-meter"><div><i id="health-fill"></i></div></div>
+          <b id="health-num" class="hud-value-hidden">100</b>
+        </div>
+        <div id="warden-status" class="warden-status hidden" aria-label="Warden health"><header><span>THE WARDEN</span><b id="warden-health-value">5000 / 5000</b></header><div><i id="warden-health-fill"></i></div></div>
+        <aside id="earth-quests" class="earth-quests hidden" aria-label="Campaign mission objectives"></aside>
+        <div class="reticle"><span></span><span></span><i></i><b id="hit-confirm" aria-hidden="true"></b></div>
+        <div id="target-status" class="target-status hidden"><small id="target-name">HOSTILE</small><div class="target-meter target-health-meter"><i id="target-health"></i></div><b id="target-hp">100 HEALTH</b><div id="target-shield-row" class="target-shield hidden"><div class="target-meter"><i id="target-shield"></i></div><b id="target-shield-value">0 SHIELD</b></div></div>
+        <div id="threat" class="threat hidden"><small>INCOMING HEX</small><strong>RIGHT CLICK — SHIELD <span id="counter"></span></strong><div><i></i></div></div>
+        <div id="toast" class="toast"></div>
+        <div id="countdown" class="countdown hidden"><small>REALM SYNCHRONIZED</small><strong>5</strong><span>COMBAT BEGINS</span></div>
+        <div id="pvp-ready-panel" class="pvp-ready-panel hidden" aria-live="polite"><small>TEAM STAGING</small><strong id="pvp-team-label">◆ ALPHA</strong><span id="pvp-ready-count">0 / 2 READY</span><kbd>R</kbd><b id="pvp-ready-action">READY UP</b></div>
+        <div class="vitals"><div class="portrait" aria-hidden="true">W</div><div id="shield-icon" class="shield-icon" aria-label="Shield inactive"><svg viewBox="0 0 32 38" aria-hidden="true"><path d="M16 2 29 7v10c0 8.7-5.2 15.4-13 19C8.2 32.4 3 25.7 3 17V7L16 2Z"/></svg></div><div><small id="player-name">WANDERER</small><div class="shield-meter"><i id="shield-fill"></i></div><span class="shield-readout"><b id="shield-num">100</b> SHIELD</span><div class="sprint"><i id="sprint-fill"></i></div><span id="sprint-label">SHIFT · SPRINT</span></div></div>
+        <div class="hotbar">
+          <button data-spell="fireball" aria-label="Fireball" title="Fireball"><kbd>1 / E</kbd><i class="fire">●</i><span>FIREBALL</span><em></em></button>
+          <button data-spell="missiles" aria-label="Missile Barrage" title="Missile Barrage"><kbd>2 / X</kbd><i>✦</i><span>MISSILES</span><em></em></button>
+          <button data-spell="lightning" aria-label="Lightning Cell" title="Lightning Cell"><kbd>3 / C</kbd><i>ϟ</i><span>LIGHTNING</span><em></em></button>
+          <button data-spell="fog" aria-label="Fog Area" title="Fog Area"><kbd>4 / F</kbd><i>≋</i><span>FOG</span><em></em></button>
+          <button data-spell="quake" aria-label="Earthquake Smash" title="Earthquake Smash"><kbd>5 / Q</kbd><i>⇊</i><span>QUAKE</span><em></em></button>
+          <button data-spell="sword" aria-label="Sword" title="Sword"><kbd>6 / R</kbd><i>⚔</i><span>SWORD</span><em></em></button>
+          <button data-super="blast" aria-label="Blast Super" title="Blast Super"><kbd>Z</kbd><i>✺</i><span>BLAST</span><small class="cooldown-value">READY</small><em></em></button>
+          <button data-action="jetpack" aria-label="Jetpack ready" title="Jetpack ready"><kbd>V</kbd><i>⇧</i><span>JETPACK</span><small class="cooldown-value">READY</small><em></em></button>
+        </div>
+        <span id="shield-status" class="hidden" aria-hidden="true"></span>
+        <div class="combat-feed" id="feed"></div>
+        <div class="minimap"><canvas id="radar" width="150" height="150"></canvas><span>N</span></div>
+        <button id="exit-simulation-view" class="exit-simulation-view hidden">EXIT VIEW</button>
+      </div>
+
+      <div id="instructions" class="modal hidden"><div><p class="eyebrow">FIELD BRIEFING</p><h2>Follow the ascent.</h2><div class="keys"><span><kbd>W A S D</kbd> Move</span><span><kbd>SHIFT + W A S D</kbd> Sprint</span><span><kbd>CTRL</kbd> Crouch</span><span><kbd>SPACE</kbd> Jump</span><span><kbd>V</kbd> Jetpack for 60s · 30s cooldown</span><span><kbd>JETPACK</kbd> W follows aim · Shift boosts · S target swoop</span><span><kbd>SCROLL / 1—6</kbd> Switch ability</span><span><kbd>Q F C E R X</kbd> Select Quake, Fog, Cell, Fireball, Sword, Missiles</span><span><kbd>Z</kbd> Activate Blast super</span><span><kbd>LEFT CLICK</kbd> Cast · throw held debris at maximum force</span><span><kbd>T</kbd> Pick up small debris</span><span><kbd>SWORD</kbd> One hit per swing · close range</span><span><kbd>MOUSE</kbd> Aim / steer barrage</span><span><kbd>RIGHT CLICK</kbd> Toggle shield (campaign/simulation)</span><span><kbd>ENEMY MARKS</kbd> ◆ Vanguard · ▲ Artillery · ⊞ Jailer · ● Veil · ⬟ Guardian</span><span><kbd>ESC</kbd> Release cursor</span><span><kbd>M</kbd> Mute / unmute sound</span></div><p>Fight through Frostbound, Verdant Ruins, and Obsidian Rift. Break the Warden’s outer guard, ascend all three tower floors, clear the Grand Warden Arena trials, and kill the Warden during his twenty-second vulnerability windows.</p><button id="ready" class="primary">ENTER FROSTBOUND</button></div></div>
+      <div id="save-prompt" class="modal save-prompt hidden" role="dialog" aria-modal="true" aria-labelledby="save-title"><div><p class="eyebrow">LOCAL COMBAT SNAPSHOT FOUND</p><h2 id="save-title">Continue deployment?</h2><p id="save-realm" class="save-realm">FROSTBOUND</p><p id="save-details" class="save-details"></p><p class="save-local-note">This snapshot exists only in this browser on this computer. Continuing restores your position, health, allies, surviving enemies, crystals, drones, and current objective progress.</p><div class="save-actions"><button id="resume-save" class="primary">CONTINUE <span>→</span></button><button id="new-campaign" class="secondary">START OVER</button></div></div></div>
+      <div id="result" class="modal result hidden"><div><p id="result-eyebrow" class="eyebrow">ARENA RESOLVED</p><h2 id="result-title">VICTORY</h2><p id="result-copy">All hostiles have been defeated.</p><div class="result-actions"><button id="view-simulation" class="primary hidden">VIEW <span>→</span></button><button id="return-lobby" class="primary"><span id="result-action-label">CHOOSE ANOTHER REALM</span> <span>→</span></button></div></div></div>
+      <div id="endless-waiting" class="modal endless-waiting hidden"><div><p class="eyebrow">ARENA CASUALTY</p><h2>WAITING ROOM</h2><p id="endless-waiting-copy">The fight continues. Press V to spectate a surviving player.</p><div class="spectate-help"><kbd>V</kbd> TOGGLE SPECTATE <span>·</span> <kbd>←</kbd><kbd>→</kbd> SWITCH PLAYER</div></div></div>
+      <div id="endless-upgrade" class="modal endless-upgrade hidden" role="dialog" aria-modal="true" aria-labelledby="endless-upgrade-title"><div><p class="eyebrow">RIFT ADAPTATION</p><h2 id="endless-upgrade-title">Choose one permanent run upgrade.</h2><p>Every third cleared wave evolves your build. This choice lasts until the squad falls.</p><div class="endless-upgrade-grid"><button type="button" data-upgrade="power"><b>▲</b><strong>OVERCHARGE</strong><span>+10% attack damage</span></button><button type="button" data-upgrade="shield"><b>⬟</b><strong>BULWARK</strong><span>+20 maximum shield</span></button><button type="button" data-upgrade="recovery"><b>✚</b><strong>RECOVERY</strong><span>Regeneration starts sooner</span></button><button type="button" data-upgrade="mobility"><b>»</b><strong>MOBILITY</strong><span>Faster sprint recovery</span></button></div></div></div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
