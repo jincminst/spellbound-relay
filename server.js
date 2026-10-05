@@ -83,6 +83,18 @@ const broadcastPvpReady = (room, map) => {
   broadcast({ type: 'pvp-ready-state', players: members.map(({ id, name, team, ready }) => ({ id, name, team, ready: Boolean(ready) })) }, null, room, map);
 };
 const cancelPvpStart = (meta, room, map) => {if(!meta?.pvpStarting)return;meta.pvpStarting=false;meta.pvpStartToken=(meta.pvpStartToken||0)+1;for(const member of players.values())if(sameScope(member,room,map))member.ready=false;broadcast({type:'pvp-start-cancelled'},null,room,map)};
+const updateStagingTeam = player => {
+  const meta = rooms.get(player.room);
+  if (player.mode !== 'pvp' || !meta?.pvpTeams || meta.pvpActive || meta.pvpStarting && Date.now() >= meta.pvpStartsAt || meta.pvpRoundFinished || player.defeated || player.waitingRoom) return;
+  // Keep a small neutral strip around the center marker to avoid team flicker.
+  const team = player.z > 2 ? 'alpha' : player.z < -2 ? 'bravo' : player.team;
+  if (team === player.team) return;
+  cancelPvpStart(meta, player.room, player.map);
+  player.team = team;
+  meta.lastActive = Date.now();
+  for (const member of players.values()) if (sameScope(member, player.room, player.map)) member.ready = false;
+  broadcastPvpReady(player.room, player.map);
+};
 const sendCampaignRosters = (room, map) => {
   const members = [...players.values()].filter(player => sameScope(player, room, map));
   for (const client of wss.clients) {
@@ -202,6 +214,7 @@ wss.on('connection', socket => {
         vx: clampNumber(data.vx,-60,60), vy: clampNumber(data.vy,-60,60), vz: clampNumber(data.vz,-60,60),
         seq: Math.max(player.seq + 1, Number(data.seq) || 0),
       });
+      if (data.stagingTeamSelection === true) updateStagingTeam(player);
       const roomMeta = rooms.get(player.room);if(player.mode==='campaign'&&roomMeta&&player.map===roomMeta.campaignMap){roomMeta.lastPartyPosition={x:player.x,y:player.y,z:player.z};roomMeta.lastActive=Date.now()}
       broadcast({ type: 'state', player, serverTime: Date.now() }, socket, player.room, player.map);
     } else if (data.type === 'cast') {
@@ -258,16 +271,16 @@ wss.on('connection', socket => {
       const meta = rooms.get(player.room);if(player.mode !== 'pvp' || !meta?.pvpTeams || meta.pvpActive || meta.pvpStarting)return;
       player.ready = Boolean(data.ready);broadcastPvpReady(player.room, player.map);
       const members=[...players.values()].filter(member=>sameScope(member,player.room,player.map)&&member.mode==='pvp'),teams=new Set(members.map(member=>member.team));
-      if(members.length>=2&&teams.has('alpha')&&teams.has('bravo')&&members.every(member=>member.ready)){meta.pvpStarting=true;meta.lastActive=Date.now();const token=meta.pvpStartToken=(meta.pvpStartToken||0)+1,room=player.room,map=player.map,startsAt=Date.now()+5000;broadcast({type:'pvp-start',round:meta.pvpRound,startsAt},null,room,map);setTimeout(()=>{if(rooms.get(room)===meta&&meta.pvpStartToken===token){meta.pvpStarting=false;meta.pvpActive=true}},5100)}
+      if(members.length>=2&&teams.has('alpha')&&teams.has('bravo')&&members.every(member=>member.ready)){meta.pvpStarting=true;meta.lastActive=Date.now();const token=meta.pvpStartToken=(meta.pvpStartToken||0)+1,room=player.room,map=player.map,startsAt=Date.now()+5000;meta.pvpStartsAt=startsAt;broadcast({type:'pvp-start',round:meta.pvpRound,startsAt},null,room,map);setTimeout(()=>{if(rooms.get(room)===meta&&meta.pvpStartToken===token){meta.pvpStarting=false;meta.pvpActive=true}},5100)}
     } else if (data.type === 'pvp-game-over') {
       const meta = rooms.get(player.room), round = Math.max(0, Math.floor(Number(data.round) || 0));
       if (player.mode !== 'pvp' || player.defeated || !meta || round !== (meta.pvpRound ?? 0)) return;
-      broadcast({ type: 'pvp-game-over', winnerId: socket.id, winnerTeam: meta.pvpTeams ? player.team : null, round }, null, player.room, player.map);meta.pvpActive=false;meta.pvpStarting=false;
+      broadcast({ type: 'pvp-game-over', winnerId: socket.id, winnerTeam: meta.pvpTeams ? player.team : null, round }, null, player.room, player.map);meta.pvpActive=false;meta.pvpStarting=false;meta.pvpRoundFinished=true;
     } else if (data.type === 'pvp-rematch') {
       if (player.mode !== 'pvp') return;
       const meta = rooms.get(player.room), currentRound = Math.max(0, Math.floor(Number(meta?.pvpRound) || 0)), requestedRound = Math.max(0, Math.floor(Number(data.round) || 0));
       if (!meta || requestedRound !== currentRound) return;
-      meta.pvpRound = currentRound + 1;meta.pvpActive=false;meta.pvpStarting=false;meta.lastActive = Date.now();
+      meta.pvpRound = currentRound + 1;meta.pvpActive=false;meta.pvpStarting=false;meta.pvpRoundFinished=false;meta.lastActive = Date.now();
       for (const member of players.values()) if (sameScope(member, player.room, player.map)) { member.hp = 100;member.defeated = false;member.waitingRoom = false;member.ready=false;member.shieldActive = false;member.shieldEnergy = 0;member.jetpackActive = false;member.jetpackThrusting = false;member.jetpackBoost = false;member.cooldowns = {};member.heldDebris = null; }
       broadcast({ type: 'pvp-rematch', round: meta.pvpRound }, null, player.room, player.map);
       if(meta.pvpTeams)broadcastPvpReady(player.room,player.map);
