@@ -15,10 +15,16 @@ const wss = new WebSocketServer({
 const players = new Map();
 const rooms = new Map();
 const cleanCode = value => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-const cleanMode = value => ['pvp', 'endless'].includes(value) ? value : 'campaign';
+const cleanMode = value => ['pvp', 'endless', 'simulation'].includes(value) ? value : 'campaign';
 const cleanArena = value => ['frost', 'glacier', 'verdant', 'grove', 'rift', 'caldera', 'warden', 'nexus'].includes(value) ? value : 'frost';
 const finiteNumber = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const clampNumber = (value, minimum, maximum, fallback = 0) => Math.max(minimum, Math.min(maximum, finiteNumber(value, fallback)));
+const cleanSimulationConfig = value => {
+  const config={helpers:Math.floor(clampNumber(value?.helpers,1,20,6)),opponents:Math.floor(clampNumber(value?.opponents,0,20,6)),wardens:Math.floor(clampNumber(value?.wardens,0,3)),drones:Math.floor(clampNumber(value?.drones,0,12)),difficulty:['easy','normal','hard','nightmare'].includes(value?.difficulty)?value.difficulty:'normal',arena:cleanArena(value?.arena),seed:Math.floor(clampNumber(value?.seed,1,0x7fffffff,1))};
+  if(!config.opponents&&!config.wardens&&!config.drones)config.opponents=1;return config;
+};
+const broadcastSimulationReady = (room,map) => broadcast({type:'simulation-ready-state',players:[...players.values()].filter(member=>sameScope(member,room,map)).map(({id,name,ready})=>({id,name,ready:Boolean(ready)}))},null,room,map);
+const cancelSimulationStart = (meta,room,map) => {if(!meta?.simulationStartsAt||Date.now()>=meta.simulationStartsAt)return;meta.simulationStartsAt=0;meta.simulationActive=false;for(const member of players.values())if(sameScope(member,room,map))member.ready=false;broadcast({type:'simulation-start-cancelled'},null,room,map)};
 const safeDirection = value => {
   const x=finiteNumber(value?.x),y=finiteNumber(value?.y),z=finiteNumber(value?.z,-1),length=Math.hypot(x,y,z);
   return length>.0001?{x:x/length,y:y/length,z:z/length}:{x:0,y:0,z:-1};
@@ -111,7 +117,7 @@ wss.on('connection', socket => {
     console.warn(`Relay client ${socket.id} disconnected after a WebSocket protocol error: ${error.code || error.message}`);
     if (socket.readyState !== 3) socket.terminate();
   });
-  send(socket, { type: 'welcome', id: socket.id });
+  send(socket, { type: 'welcome', id: socket.id, features:{simulationRooms:true} });
 
   socket.on('message', raw => {
     let data;
@@ -119,7 +125,7 @@ wss.on('connection', socket => {
 
     if (data.type === 'lookup-room') {
       const room = cleanCode(data.room), meta = rooms.get(room);
-      send(socket, meta ? { type: 'room-info', room, mode: meta.mode, arena: meta.arena, pvpTeams: Boolean(meta.pvpTeams), campaignIndex: meta.campaignIndex ?? 0, pvpRound: meta.pvpRound ?? 0, endlessSeed: meta.endlessSeed, endlessWave: meta.endlessWave ?? 0, endlessConfig: meta.endlessConfig || null } : { type: 'room-missing', room });
+      send(socket, meta ? { type: 'room-info', room, mode: meta.mode, arena: meta.arena, pvpTeams: Boolean(meta.pvpTeams), campaignIndex: meta.campaignIndex ?? 0, pvpRound: meta.pvpRound ?? 0, endlessSeed: meta.endlessSeed, endlessWave: meta.endlessWave ?? 0, endlessConfig: meta.endlessConfig || null, simulationConfig:meta.simulationConfig||null,simulationActive:Boolean(meta.simulationActive),simulationStartsAt:meta.simulationStartsAt||0 } : { type: 'room-missing', room });
       return;
     }
 
@@ -141,8 +147,8 @@ wss.on('connection', socket => {
       if (data.create) {
         if (meta) { send(socket, { type: 'join-error', reason: 'ROOM CODE ALREADY EXISTS' }); return; }
         const mode = cleanMode(data.mode), campaignIndex = Math.max(0, Math.min(7, Math.floor(Number(data.campaignIndex) || 0)));
-        meta = { mode, arena: cleanArena(data.arena), pvpTeams: mode === 'pvp' && Boolean(data.pvpTeams), pvpActive: false, pvpStarting: false, campaignIndex, pvpRound: 0, campaignMap: mode === 'campaign' ? String(data.map || 'campaign:frost').slice(0, 48) : null, endlessSeed: mode === 'endless' ? Math.max(1, Math.floor(Number(data.endlessSeed) || 1)) : null, endlessWave: 0, endlessConfig: null, lastPartyPosition: null, createdAt: Date.now(), lastActive: Date.now() };
-        rooms.set(room, meta);
+        meta = { mode, arena: cleanArena(data.arena), pvpTeams: mode === 'pvp' && Boolean(data.pvpTeams), pvpActive: false, pvpStarting: false, campaignIndex, pvpRound: 0, campaignMap: mode === 'campaign' ? String(data.map || 'campaign:frost').slice(0, 48) : null, endlessSeed: mode === 'endless' ? Math.max(1, Math.floor(Number(data.endlessSeed) || 1)) : null, endlessWave: 0, endlessConfig: null, simulationConfig:mode==='simulation'?cleanSimulationConfig(data.simulationConfig):null,simulationActive:false,simulationStartsAt:0,lastPartyPosition: null, createdAt: Date.now(), lastActive: Date.now() };
+        if(mode==='simulation')meta.arena=meta.simulationConfig.arena;rooms.set(room, meta);
       } else if (!meta) {
         send(socket, { type: 'join-error', reason: 'RIFT NOT FOUND' });
         return;
@@ -152,8 +158,8 @@ wss.on('connection', socket => {
       const campaignMap = meta.mode === 'campaign' ? (meta.campaignMap || String(data.map || 'campaign:frost').slice(0, 48)) : null;
       const campaignMembers = meta.mode === 'campaign' ? [...players.values()].filter(other => other.room === room && other.map === campaignMap).sort((a, b) => a.joinedAt - b.joinedAt) : [];
       const partyMember = campaignMembers[0] || null;
-      const arenaMode = meta.mode === 'pvp' || meta.mode === 'endless', playerMap = arenaMode ? `${meta.mode}:${meta.arena}` : campaignMap, spawnSlot = arenaMode ? nextPvpSpawnSlot(room, playerMap) : null, requestedTeam=['alpha','bravo'].includes(data.team)?data.team:null,team = meta.mode === 'pvp' && meta.pvpTeams ? (data.resume&&requestedTeam?requestedTeam:nextPvpTeam(room, playerMap)) : null, assignedSpawn = arenaMode ? pvpSpawn(spawnSlot, meta.arena, team) : { x: 0, y: 1.1, z: 0, ry: 0 }, resumePvp = arenaMode && Boolean(data.resume) && [data.x, data.y, data.z, data.ry].every(value => Number.isFinite(Number(value))), resumeLimit = meta.arena === 'warden' ? 38 : 48;
-      if(meta.mode==='pvp'&&meta.pvpTeams&&meta.pvpStarting)cancelPvpStart(meta,room,playerMap);
+      const arenaMode = meta.mode === 'pvp' || meta.mode === 'endless' || meta.mode === 'simulation', playerMap = arenaMode ? `${meta.mode}:${meta.arena}` : campaignMap, spawnSlot = arenaMode ? nextPvpSpawnSlot(room, playerMap) : null, requestedTeam=['alpha','bravo'].includes(data.team)?data.team:null,team = meta.mode === 'pvp' && meta.pvpTeams ? (data.resume&&requestedTeam?requestedTeam:nextPvpTeam(room, playerMap)) : null, assignedSpawn = arenaMode ? pvpSpawn(spawnSlot, meta.arena, team) : { x: 0, y: 1.1, z: 0, ry: 0 }, resumePvp = arenaMode && Boolean(data.resume) && [data.x, data.y, data.z, data.ry].every(value => Number.isFinite(Number(value))), resumeLimit = meta.arena === 'warden' ? 38 : 48;
+      if(meta.mode==='pvp'&&meta.pvpTeams&&meta.pvpStarting)cancelPvpStart(meta,room,playerMap);if(meta.mode==='simulation')cancelSimulationStart(meta,room,playerMap);
       const player = {
         id: socket.id,
         name: String(data.name || 'Wanderer').slice(0, 18),
@@ -164,7 +170,7 @@ wss.on('connection', socket => {
         color: Number(data.color) || 0x79e8ff,
         spawnSlot,
         team,
-        ready: false,
+        ready: false,spectator:meta.mode==='simulation',
         x: resumePvp ? Math.max(-resumeLimit, Math.min(resumeLimit, Number(data.x))) : assignedSpawn.x,
         y: resumePvp ? Math.max(-18, Math.min(80, Number(data.y))) : assignedSpawn.y,
         z: resumePvp ? Math.max(-resumeLimit, Math.min(resumeLimit, Number(data.z))) : assignedSpawn.z,
@@ -174,13 +180,13 @@ wss.on('connection', socket => {
         joinedAt: Date.now(), seq: 0,
       };
       players.set(socket.id, player);
-      send(socket, { type: 'room-info', room, mode: meta.mode, arena: meta.arena, pvpTeams: Boolean(meta.pvpTeams), pvpActive: Boolean(meta.pvpActive), campaignIndex: meta.campaignIndex ?? 0, pvpRound: meta.pvpRound ?? 0, spawnSlot, team, partyPosition: partyMember ? { x: partyMember.x, y: partyMember.y, z: partyMember.z } : meta.lastPartyPosition, endlessSeed: meta.endlessSeed, endlessWave: meta.endlessWave ?? 0, endlessConfig: meta.endlessConfig || null });
+      send(socket, { type: 'room-info', room, mode: meta.mode, arena: meta.arena, pvpTeams: Boolean(meta.pvpTeams), pvpActive: Boolean(meta.pvpActive), campaignIndex: meta.campaignIndex ?? 0, pvpRound: meta.pvpRound ?? 0, spawnSlot, team, partyPosition: partyMember ? { x: partyMember.x, y: partyMember.y, z: partyMember.z } : meta.lastPartyPosition, endlessSeed: meta.endlessSeed, endlessWave: meta.endlessWave ?? 0, endlessConfig: meta.endlessConfig || null, simulationConfig:meta.simulationConfig||null,simulationActive:Boolean(meta.simulationActive),simulationStartsAt:meta.simulationStartsAt||0 });
       for (const other of players.values()) {
         if (other.id !== socket.id && sameScope(other, player.room, player.map)) send(socket, { type: 'player-join', player: other });
       }
       broadcast({ type: 'player-join', player }, socket, player.room, player.map);
       broadcastRoomState(player.room, player.map);
-      if (meta.mode === 'pvp' && meta.pvpTeams) broadcastPvpReady(player.room, player.map);
+      if (meta.mode === 'pvp' && meta.pvpTeams) broadcastPvpReady(player.room, player.map);if(meta.mode==='simulation')broadcastSimulationReady(player.room,player.map);
       return;
     }
 
@@ -202,7 +208,7 @@ wss.on('connection', socket => {
         shieldEnergy: Math.max(0, Math.min(200, Number(data.shieldEnergy) || 0)),
         shieldMax: Math.max(1, Math.min(200, Number(data.shieldMax) || 100)),
         defeated: Boolean(data.defeated),
-        waitingRoom: Boolean(data.waitingRoom),
+        waitingRoom: Boolean(data.waitingRoom),spectator:player.mode==='simulation'&&Boolean(data.spectator),
         selectedSpell: String(data.selectedSpell || 'fireball').slice(0, 20),
         heldDebris: data.heldDebris && typeof data.heldDebris === 'object' ? {
           x: Math.max(.08, Math.min(1.85, Number(data.heldDebris.x) || .35)),
@@ -219,8 +225,8 @@ wss.on('connection', socket => {
       broadcast({ type: 'state', player, serverTime: Date.now() }, socket, player.room, player.map);
     } else if (data.type === 'cast') {
       const spell = String(data.spell || '').slice(0, 20), targetId = String(data.targetId || '').slice(0, 16);
-      if(!['fireball','missiles','lightning','fog','quake','sword','blast'].includes(spell))return;
-      const roomMeta=rooms.get(player.room),cellTarget = spell === 'lightning' ? [...wss.clients].find(client => {const target=players.get(client.id);return client.id === targetId && sameScope(target, player.room, player.map)&&!(player.mode==='pvp'&&roomMeta?.pvpTeams&&player.team&&player.team===target?.team)}) : null;
+      if(!['fireball','missiles','lightning','fog','quake','sword','blast'].includes(spell)||player.mode==='simulation'&&player.spectator)return;
+      const roomMeta=rooms.get(player.room),cellTarget = spell === 'lightning' ? [...wss.clients].find(client => {const target=players.get(client.id);return client.id === targetId && sameScope(target, player.room, player.map)&&player.mode!=='simulation'&&!(player.mode==='pvp'&&roomMeta?.pvpTeams&&player.team&&player.team===target?.team)}) : null;
       const power = clampNumber(data.power,1,2,1),origin=safeCastOrigin(data.origin,player),direction=safeDirection(data.direction);
       broadcast({ type: 'cast', from: socket.id, spell, origin, direction, targetId, targetedCell: Boolean(cellTarget), power }, socket, player.room, player.map);
       if (cellTarget) send(cellTarget, { type: 'cell-attempt', from: socket.id, origin, power });
@@ -247,7 +253,7 @@ wss.on('connection', socket => {
       sendCampaignRosters(player.room, campaignMap);
     } else if (data.type === 'world-state') {
       if (scopeHost(player.room, player.map) !== socket.id) return;
-      const helpers = Array.isArray(data.helpers) ? data.helpers.slice(0, 5).map((helper, index) => ({
+      const helpers = Array.isArray(data.helpers) ? data.helpers.slice(0, player.mode==='simulation'?20:5).map((helper, index) => ({
         name: String(helper?.name || `AEGIS ${index + 1}`).slice(0, 18),
         x: Number(helper?.x) || 0, y: Number(helper?.y) || 0, z: Number(helper?.z) || 0,
         ry: Number(helper?.ry) || 0, hp: Math.max(0, Math.min(100, Number(helper?.hp) || 0)),
@@ -267,6 +273,11 @@ wss.on('connection', socket => {
     } else if (data.type === 'endless-game-over') {
       if (player.mode !== 'endless' || scopeHost(player.room, player.map) !== socket.id) return;
       broadcast({ type: 'endless-game-over', wave: Math.max(1, Math.floor(Number(data.wave) || 1)) }, socket, player.room, player.map);
+    } else if (data.type === 'simulation-ready') {
+      const meta=rooms.get(player.room);if(player.mode!=='simulation'||!meta||meta.simulationActive&&Date.now()>=meta.simulationStartsAt)return;
+      cancelSimulationStart(meta,player.room,player.map);player.ready=Boolean(data.ready);broadcastSimulationReady(player.room,player.map);
+      const members=[...players.values()].filter(member=>sameScope(member,player.room,player.map));
+      if(members.length&&members.every(member=>member.ready)){meta.simulationActive=true;meta.simulationStartsAt=Date.now()+5000;meta.lastActive=Date.now();broadcast({type:'simulation-start',startsAt:meta.simulationStartsAt},null,player.room,player.map)}
     } else if (data.type === 'pvp-ready') {
       const meta = rooms.get(player.room);if(player.mode !== 'pvp' || !meta?.pvpTeams || meta.pvpActive || meta.pvpStarting)return;
       player.ready = Boolean(data.ready);broadcastPvpReady(player.room, player.map);
@@ -294,9 +305,10 @@ wss.on('connection', socket => {
       if (scopeHost(player.room, player.map) !== socket.id) return;
       broadcast({ type: 'enemy-cast', bot: Math.max(0, Math.floor(Number(data.bot) || 0)), spell: String(data.spell || '').slice(0, 20), target: String(data.target || '').slice(0, 16) }, socket, player.room, player.map);
     } else if (data.type === 'hit') {
+      if(player.mode==='simulation'&&scopeHost(player.room,player.map)!==socket.id)return;
       for (const client of wss.clients) {
         const target = players.get(client.id);
-        if (client.id === data.target && sameScope(target, player.room, player.map) && !(player.mode==='pvp'&&rooms.get(player.room)?.pvpTeams&&player.team&&player.team===target.team)) send(client, { type: 'damage', amount: Math.max(0, Math.min(150, Number(data.amount) || 0)), spell: data.spell, from: socket.id });
+        if (client.id === data.target && sameScope(target, player.room, player.map) && !target.spectator && !(player.mode==='pvp'&&rooms.get(player.room)?.pvpTeams&&player.team&&player.team===target.team)) send(client, { type: 'damage', amount: Math.max(0, Math.min(150, Number(data.amount) || 0)), spell: data.spell, from: socket.id });
       }
     }
   });
@@ -305,7 +317,7 @@ wss.on('connection', socket => {
     const player = players.get(socket.id);
     players.delete(socket.id);
     if (player) {
-      const meta=rooms.get(player.room);if(player.mode==='pvp'&&meta?.pvpTeams&&meta.pvpStarting)cancelPvpStart(meta,player.room,player.map);
+      const meta=rooms.get(player.room);if(player.mode==='simulation'){cancelSimulationStart(meta,player.room,player.map);broadcastSimulationReady(player.room,player.map)}if(player.mode==='pvp'&&meta?.pvpTeams&&meta.pvpStarting)cancelPvpStart(meta,player.room,player.map);
       broadcast({ type: 'player-leave', id: socket.id }, null, player.room, player.map);
       broadcastRoomState(player.room, player.map);
       if(player.mode==='pvp'&&rooms.get(player.room)?.pvpTeams)broadcastPvpReady(player.room,player.map);
